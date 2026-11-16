@@ -21,9 +21,9 @@ import time
 import json
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-from datetime import datetime, timezone
 
 from fastapi import (
     FastAPI, Request, Response, status, Depends, HTTPException,
@@ -33,13 +33,14 @@ from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 import config
 from auth import (
     PasswordSecurity, TokenManager, RBAC, RateLimiter,
     SecuritySanitizer, OAuthProvider
 )
-from database import RelationalRepository, MongoDocumentStore, document_store, User
+from database import RelationalRepository, document_store, User
 from cache import cache
 from brain import JarvisBrain
 from payment import PaymentGateway
@@ -47,10 +48,40 @@ from payment import PaymentGateway
 logger = logging.getLogger("JarvisServer")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    FastAPI 0.163+ Lifespan Context Manager.
+    Replaces deprecated @app.on_event("startup") and @app.on_event("shutdown").
+    Initializes and manages scheduled background maintenance tasks.
+    """
+    cron_task = None
+    if os.getenv("TESTING") != "1":
+        async def memory_maintenance_loop():
+            try:
+                while True:
+                    await asyncio.sleep(600)  # Runs every 10 minutes
+                    logger.info("[CRON] Running scheduled vector memory & cache consolidation...")
+                    cache.set("cron_last_run", time.time())
+            except asyncio.CancelledError:
+                pass
+
+        cron_task = asyncio.create_task(memory_maintenance_loop())
+        logger.info("Jarvis Server startup complete. Scheduled background tasks initialized.")
+
+    yield
+
+    if cron_task and not cron_task.done():
+        cron_task.cancel()
+        logger.info("Jarvis Server background scheduled tasks terminated cleanly.")
+
+
 app = FastAPI(
     title="JARVIS Edge-First Ecosystem API",
     description="RESTful Microservices, Real-Time WebSockets & Agentic Orchestration Engine",
-    version="2.0.0"
+    version="2.0.0",
+    lifespan=lifespan
 )
 
 # Server-Side Rendering (SSR) Jinja2 Template Engine
@@ -295,7 +326,8 @@ async def register_user(payload: UserRegisterSchema):
 async def login_user(payload: UserLoginSchema):
     """Authenticates credentials and issues signed JWT access token."""
     session = RelationalRepository.get_session()
-    user = session.query(User).filter(User.username == payload.username).first()
+    stmt = select(User).where(User.username == payload.username)
+    user = session.scalars(stmt).first()
     session.close()
 
     if not user or not PasswordSecurity.verify_password(payload.password, str(user.password_hash)):
@@ -662,37 +694,6 @@ async def websocket_telemetry_endpoint(websocket: WebSocket):
         logger.info("WebSocket telemetry client disconnected.")
     except Exception as e:
         logger.error(f"WebSocket telemetry error: {e}")
-
-
-# -------------------------------------------------------------
-# 8. SCHEDULED BACKGROUND JOBS (CRON SIMULATION)
-# -------------------------------------------------------------
-cron_task = None
-
-@app.on_event("startup")
-async def startup_scheduled_jobs():
-    """Initializes scheduled background maintenance tasks."""
-    global cron_task
-    if os.getenv("TESTING") == "1":
-        return
-
-    async def memory_maintenance_loop():
-        try:
-            while True:
-                await asyncio.sleep(600)  # Runs every 10 minutes
-                logger.info("[CRON] Running scheduled vector memory & cache consolidation...")
-                cache.set("cron_last_run", time.time())
-        except asyncio.CancelledError:
-            pass
-
-    cron_task = asyncio.create_task(memory_maintenance_loop())
-    logger.info("Jarvis Server startup complete. Scheduled background tasks initialized.")
-
-@app.on_event("shutdown")
-async def shutdown_scheduled_jobs():
-    global cron_task
-    if cron_task and not cron_task.done():
-        cron_task.cancel()
 
 
 if __name__ == "__main__":

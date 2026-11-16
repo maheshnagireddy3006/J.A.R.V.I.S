@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Text, Float, Boolean,
+    create_engine, Integer, String, Text, Float, Boolean,
     DateTime, ForeignKey, Index, func, select
 )
 from sqlalchemy.orm import (
