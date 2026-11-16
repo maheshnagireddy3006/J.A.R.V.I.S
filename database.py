@@ -25,11 +25,14 @@ from sqlalchemy import (
     create_engine, Column, Integer, String, Text, Float, Boolean,
     DateTime, ForeignKey, Index, func, select
 )
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker, Session
+from sqlalchemy.orm import (
+    DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
+)
 
 import config
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 # SQLite local database path with automatic directory validation
 SQLITE_DB_PATH = config.DATA_DIR / "jarvis_relational.db"
@@ -40,7 +43,7 @@ engine = create_engine(
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
     echo=False
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=False, bind=engine)
 
 
 # =====================================================================
@@ -54,17 +57,17 @@ class User(Base):
     """
     __tablename__ = "users"
 
-    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    username = Column(String(64), unique=True, nullable=False, index=True)
-    email = Column(String(128), unique=True, nullable=False, index=True)
-    password_hash = Column(String(256), nullable=False)
-    role = Column(String(32), default="guest", nullable=False)  # 'admin', 'operator', 'guest'
-    is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), default="guest", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # 1-to-Many Relationships (Referencing Pattern with eager joined loading)
-    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan", lazy="joined")
-    audit_logs = relationship("TaskAuditLog", back_populates="user", cascade="all, delete-orphan", lazy="joined")
+    sessions: Mapped[List["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan", lazy="joined")
+    audit_logs: Mapped[List["TaskAuditLog"]] = relationship("TaskAuditLog", back_populates="user", cascade="all, delete-orphan", lazy="joined")
 
 
 class UserSession(Base):
@@ -74,13 +77,13 @@ class UserSession(Base):
     """
     __tablename__ = "user_sessions"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    token = Column(String(512), unique=True, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    user = relationship("User", back_populates="sessions")
+    user: Mapped["User"] = relationship("User", back_populates="sessions")
 
 
 class TaskAuditLog(Base):
@@ -90,16 +93,16 @@ class TaskAuditLog(Base):
     """
     __tablename__ = "task_audit_logs"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    action_type = Column(String(64), nullable=False)  # 'tool_execution', 'voice_query', 'system_error'
-    tool_name = Column(String(64), nullable=True)
-    status = Column(String(32), nullable=False)       # 'SUCCESS', 'FAILED', 'RETRY'
-    duration_ms = Column(Float, default=0.0)
-    details = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    tool_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    duration_ms: Mapped[float] = mapped_column(Float, default=0.0)
+    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    user = relationship("User", back_populates="audit_logs")
+    user: Mapped[Optional["User"]] = relationship("User", back_populates="audit_logs")
 
     # Composite Index for high-performance timeline queries
     __table_args__ = (
@@ -142,7 +145,7 @@ class RelationalRepository:
                 
                 # Create initial session token record
                 initial_session = UserSession(
-                    user_id=user.id,
+                    user_id=int(user.id),
                     token=f"init_session_{user.id}_{int(time.time())}",
                     expires_at=datetime.now(timezone.utc)
                 )
@@ -150,7 +153,6 @@ class RelationalRepository:
                 session.flush()
                 # Access eager relationship before session close
                 _ = list(user.sessions)
-            session.refresh(user)
             return user
         except Exception as e:
             session.rollback()
@@ -181,7 +183,7 @@ class RelationalRepository:
                     details=details
                 )
                 session.add(log_entry)
-            session.refresh(log_entry)
+                session.flush()
             return log_entry
         finally:
             session.close()

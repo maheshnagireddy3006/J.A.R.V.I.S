@@ -39,7 +39,7 @@ from auth import (
     PasswordSecurity, TokenManager, RBAC, RateLimiter,
     SecuritySanitizer, OAuthProvider
 )
-from database import RelationalRepository, MongoDocumentStore, document_store
+from database import RelationalRepository, MongoDocumentStore, document_store, User
 from cache import cache
 from brain import JarvisBrain
 from payment import PaymentGateway
@@ -295,25 +295,24 @@ async def register_user(payload: UserRegisterSchema):
 async def login_user(payload: UserLoginSchema):
     """Authenticates credentials and issues signed JWT access token."""
     session = RelationalRepository.get_session()
-    from database import User
     user = session.query(User).filter(User.username == payload.username).first()
     session.close()
 
-    if not user or not PasswordSecurity.verify_password(payload.password, user.password_hash):
+    if not user or not PasswordSecurity.verify_password(payload.password, str(user.password_hash)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password."
         )
 
     access_token = TokenManager.create_access_token(
-        subject=user.username,
-        role=user.role,
-        extra_claims={"user_id": user.id, "email": user.email}
+        subject=str(user.username),
+        role=str(user.role),
+        extra_claims={"user_id": user.id, "email": str(user.email)}
     )
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "role": user.role,
+        "role": str(user.role),
         "expires_in_minutes": 120
     }
 
