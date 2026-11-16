@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+jarvis_env/
+venv/
+env/
+ENV/
+
+# Application runtime data & logs
+*.log
+realtimesst.log
+data/logs/
+data/chroma/*.bin
+data/chroma/*.sqlite3
+
+# OS / Editor generated
+.DS_Store
+Thumbs.db
+*.tmp
