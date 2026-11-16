@@ -16,8 +16,16 @@ d:\Jarvis_core/
 ├── .env                       # Local secrets and configuration variables
 ├── .env.example               # Template for environment variables & secrets management
 ├── .gitignore                 # Version control exclusion rules (protects logs, cache, venv)
+├── GIT_WORKFLOW.md            # Git Flow, branch conventions, PR template & semantic commits
+├── package.json               # Node.js backend dependencies (Sequelize, Mongoose, Express, etc.)
+├── package-lock.json          # Deterministic Node dependency lockfile
 ├── .vscode/
 │   └── settings.json          # Python interpreter path and analysis bindings
+├── backend/                   # Express Microservices & Database Tier
+│   ├── server.js              # Express REST API, WebSockets, rate limiting, SSR & Stripe
+│   └── models/
+│       ├── sqlModels.js       # Sequelize ORM, PK/FK, SQL JOINs, transactions, 3NF
+│       └── mongoModels.js     # Mongoose Schemas, embedded/referenced, indexes, aggregation
 ├── data/
 │   ├── chroma/                # Persistent vector database (SQLite3 + HNSW indexes)
 │   ├── jarvis_relational.db   # SQLite relational database (Users, Sessions, AuditLogs)
@@ -32,13 +40,16 @@ d:\Jarvis_core/
 │   └── test_security.py       # Prompt injection defenses and shell sanitization tests
 ├── web/                       # React Web HUD Frontend
 │   ├── index.html             # Single-page application root HTML
-│   ├── package.json           # React dependencies & build scripts
+│   ├── package.json           # React & React-Router dependencies
+│   ├── vite.config.js         # Vite bundler configuration
 │   └── src/
-│       ├── App.jsx            # Client-side routing & view switching
+│       ├── App.jsx            # Client-side routing via react-router-dom
+│       ├── index.css          # Responsive layout & styling with media queries
 │       ├── main.jsx           # React DOM root bootstrapping
 │       ├── components/
 │       │   ├── CommandForm.jsx     # Controlled inputs, validation, loading/error UI states
 │       │   ├── Dashboard.jsx       # Component composition, useState, useEffect, async fetch
+│       │   ├── LoginForm.jsx       # Form validation, email regex, error boundaries
 │       │   ├── TelemetryCard.jsx   # Props composition & responsive styling
 │       │   └── TerminalConsole.jsx # Event streaming console
 │       └── utils/

@@ -23,7 +23,8 @@ data/uploads/
 # Environment secrets
 .env
 
-# Frontend build artifacts
+# Frontend & Node build artifacts
+node_modules/
 web/node_modules/
 web/dist/
 

@@ -1,0 +1,28 @@
+{
+  "name": "jarvis-core-ecosystem",
+  "version": "2.0.0",
+  "description": "J.A.R.V.I.S. Edge-First Graph-Agent Ecosystem",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "test": "node --test",
+    "build:web": "cd web && npm run build"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "express-rate-limit": "^7.4.0",
+    "sequelize": "^6.37.3",
+    "sqlite3": "^5.1.7",
+    "pg": "^8.12.0",
+    "mongoose": "^8.6.0",
+    "redis": "^4.7.0",
+    "ws": "^8.18.0",
+    "node-cron": "^3.0.3",
+    "stripe": "^16.9.0",
+    "multer": "^1.4.5-lts.1"
+  }
+}
