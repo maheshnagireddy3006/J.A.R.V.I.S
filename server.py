@@ -16,33 +16,46 @@ Implements:
   13. LLM Eval Sets (Autonomous evaluation benchmark runner)
 """
 
+import asyncio
+import json
+import logging
 import os
 import time
-import json
-import asyncio
-import logging
 from contextlib import asynccontextmanager
-from typing import Optional, List, Dict, Any
 from pathlib import Path
+from typing import Any
 
 from fastapi import (
-    FastAPI, Request, Response, status, Depends, HTTPException,
-    WebSocket, WebSocketDisconnect, UploadFile, File, Header
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
 )
-from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 import config
 from auth import (
-    PasswordSecurity, TokenManager, RBAC, RateLimiter,
-    SecuritySanitizer, OAuthProvider
+    RBAC,
+    OAuthProvider,
+    PasswordSecurity,
+    RateLimiter,
+    SecuritySanitizer,
+    TokenManager,
 )
-from database import RelationalRepository, document_store, User
-from cache import cache
 from brain import JarvisBrain
+from cache import cache
+from database import RelationalRepository, User, document_store
 from payment import PaymentGateway
 
 logger = logging.getLogger("JarvisServer")
@@ -178,7 +191,7 @@ class UserRegisterSchema(BaseModel):
     username: str = Field(..., min_length=3, max_length=50, examples=["stark"])
     email: str = Field(..., pattern=r"^[^@]+@[^@]+\.[^@]+$", examples=["tony@stark.local"])
     password: str = Field(..., min_length=6, max_length=128)
-    role: Optional[str] = Field(default="operator", examples=["admin", "operator", "guest"])
+    role: str | None = Field(default="operator", examples=["admin", "operator", "guest"])
 
 
 class UserLoginSchema(BaseModel):
@@ -188,23 +201,23 @@ class UserLoginSchema(BaseModel):
 
 class QueryRequestSchema(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000, examples=["Check system health"])
-    stream: Optional[bool] = Field(default=False)
-    user_context: Optional[Dict[str, Any]] = None
+    stream: bool | None = Field(default=False)
+    user_context: dict[str, Any] | None = None
 
 
 class DocumentCreateSchema(BaseModel):
     title: str = Field(..., min_length=1)
     category: str = Field(..., examples=["operational_note", "preference"])
     content: str = Field(...)
-    tags: Optional[List[str]] = Field(default_factory=list)
-    user_ref_id: Optional[int] = None
-    embedded_profile: Optional[Dict[str, Any]] = None
+    tags: list[str] | None = Field(default_factory=list)
+    user_ref_id: int | None = None
+    embedded_profile: dict[str, Any] | None = None
 
 
 # -------------------------------------------------------------
 # 4. DEPENDENCY INJECTION: AUTH & ROLE VERIFICATION
 # -------------------------------------------------------------
-def get_current_user_claims(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+def get_current_user_claims(authorization: str | None = Header(None)) -> dict[str, Any]:
     """Validates Authorization: Bearer <JWT> header and returns token claims."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -221,7 +234,7 @@ def get_current_user_claims(authorization: Optional[str] = Header(None)) -> Dict
 
 def require_role(required_role: str):
     """Higher-order dependency enforcing RBAC role boundaries."""
-    def role_checker(claims: Dict[str, Any] = Depends(get_current_user_claims)):
+    def role_checker(claims: dict[str, Any] = Depends(get_current_user_claims)):
         user_role = claims.get("role", "guest")
         if not RBAC.is_authorized(user_role, required_role):
             raise HTTPException(
@@ -251,7 +264,7 @@ class TokenUsageTracker:
         cls._total_inferences += 1
 
     @classmethod
-    def get_metrics(cls) -> Dict[str, Any]:
+    def get_metrics(cls) -> dict[str, Any]:
         return {
             "total_inferences": cls._total_inferences,
             "total_prompt_tokens": cls._total_prompt_tokens,
@@ -368,7 +381,7 @@ async def oauth_callback(code: str, provider: str = "github"):
 @app.post("/api/v1/agent/query", status_code=status.HTTP_200_OK, tags=["Agent"])
 async def execute_agent_query(
     payload: QueryRequestSchema,
-    claims: Dict[str, Any] = Depends(require_role("operator"))
+    claims: dict[str, Any] = Depends(require_role("operator"))
 ):
     """
     Executes multi-step LangGraph agent workflow with prompt sanitization,
@@ -429,7 +442,7 @@ async def stream_agent_query(payload: QueryRequestSchema):
 
 # Relational Audit Logs with JOINs (HTTP 200 OK)
 @app.get("/api/v1/audit/logs", tags=["Database"])
-async def get_audit_logs(username: str, claims: Dict[str, Any] = Depends(require_role("operator"))):
+async def get_audit_logs(username: str, claims: dict[str, Any] = Depends(require_role("operator"))):
     """Retrieves normalized task audit logs using SQL JOINs."""
     logs = RelationalRepository.get_user_audit_logs_with_join(username)
     return {"username": username, "total_logs": len(logs), "logs": logs}
@@ -445,14 +458,14 @@ async def get_tool_stats():
 
 # Document Store (NoSQL Mongo) CRUD Endpoints
 @app.post("/api/v1/documents", status_code=status.HTTP_201_CREATED, tags=["NoSQL"])
-async def create_document(doc: DocumentCreateSchema, claims: Dict[str, Any] = Depends(require_role("operator"))):
+async def create_document(doc: DocumentCreateSchema, claims: dict[str, Any] = Depends(require_role("operator"))):
     """Demonstrates NoSQL Document insertion with embedded relationships."""
     doc_id = document_store.insert_one(doc.model_dump())
     return {"message": "Document created", "_id": doc_id}
 
 
 @app.get("/api/v1/documents", tags=["NoSQL"])
-async def query_documents(category: Optional[str] = None):
+async def query_documents(category: str | None = None):
     """Demonstrates NoSQL filtered querying with index acceleration."""
     query = {"category": category} if category else {}
     results = document_store.find(query)
@@ -460,7 +473,7 @@ async def query_documents(category: Optional[str] = None):
 
 
 @app.post("/api/v1/documents/aggregate", tags=["NoSQL"])
-async def aggregate_documents(pipeline: List[Dict[str, Any]]):
+async def aggregate_documents(pipeline: list[dict[str, Any]]):
     """Demonstrates NoSQL Aggregation Pipeline ($match, $group, $sort, $project)."""
     results = document_store.aggregate(pipeline)
     return {"pipeline_stages": len(pipeline), "result": results}
@@ -470,7 +483,7 @@ async def aggregate_documents(pipeline: List[Dict[str, Any]]):
 @app.post("/api/v1/files/upload", status_code=status.HTTP_200_OK, tags=["Files"])
 async def upload_file(
     file: UploadFile = File(...),
-    claims: Dict[str, Any] = Depends(require_role("operator"))
+    claims: dict[str, Any] = Depends(require_role("operator"))
 ):
     """
     Demonstrates File Upload Handling:
@@ -579,7 +592,7 @@ async def create_payment_checkout(amount_cents: int = 1999, currency: str = "usd
 
 # Payment Gateway Webhook Verification
 @app.post("/api/v1/payments/webhook", tags=["Payments"])
-async def payment_webhook(request: Request, x_signature: Optional[str] = Header(None)):
+async def payment_webhook(request: Request, x_signature: str | None = Header(None)):
     """Demonstrates Webhook Signature Verification and order fulfillment."""
     body_bytes = await request.body()
     try:
@@ -647,7 +660,7 @@ async def get_cached_item(key: str):
 
 
 @app.post("/api/v1/cache/set", status_code=status.HTTP_201_CREATED, tags=["Cache"])
-async def set_cached_item(payload: Dict[str, Any]):
+async def set_cached_item(payload: dict[str, Any]):
     """Stores key-value pair in Redis cache with designated TTL."""
     key = payload.get("key")
     value = payload.get("value")

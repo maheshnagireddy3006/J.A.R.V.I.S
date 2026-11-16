@@ -15,21 +15,36 @@ Implements:
   12. Indexing for NoSQL Query Performance
 """
 
-import os
 import json
+import os
 import time
-from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from datetime import UTC, datetime
+from typing import Any, Optional
 
 from sqlalchemy import (
-    create_engine, Integer, String, Text, Float, Boolean,
-    DateTime, ForeignKey, Index, func, select
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    func,
+    select,
 )
 from sqlalchemy.orm import (
-    DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, Session
+    DeclarativeBase,
+    Mapped,
+    Session,
+    mapped_column,
+    relationship,
+    sessionmaker,
 )
 
 import config
+
 
 class Base(DeclarativeBase):
     pass
@@ -63,11 +78,11 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(256), nullable=False)
     role: Mapped[str] = mapped_column(String(32), default="guest", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
     # 1-to-Many Relationships (Referencing Pattern with eager joined loading)
-    sessions: Mapped[List["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan", lazy="joined")
-    audit_logs: Mapped[List["TaskAuditLog"]] = relationship("TaskAuditLog", back_populates="user", cascade="all, delete-orphan", lazy="joined")
+    sessions: Mapped[list["UserSession"]] = relationship("UserSession", back_populates="user", cascade="all, delete-orphan", lazy="joined")
+    audit_logs: Mapped[list["TaskAuditLog"]] = relationship("TaskAuditLog", back_populates="user", cascade="all, delete-orphan", lazy="joined")
 
 
 class UserSession(Base):
@@ -81,7 +96,7 @@ class UserSession(Base):
     user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token: Mapped[str] = mapped_column(String(512), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
     user: Mapped["User"] = relationship("User", back_populates="sessions")
 
@@ -94,13 +109,13 @@ class TaskAuditLog(Base):
     __tablename__ = "task_audit_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     action_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    tool_name: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    tool_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     duration_ms: Mapped[float] = mapped_column(Float, default=0.0)
-    details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
 
     user: Mapped[Optional["User"]] = relationship("User", back_populates="audit_logs")
 
@@ -147,7 +162,7 @@ class RelationalRepository:
                 initial_session = UserSession(
                     user_id=int(user.id),
                     token=f"init_session_{user.id}_{int(time.time())}",
-                    expires_at=datetime.now(timezone.utc)
+                    expires_at=datetime.now(UTC)
                 )
                 session.add(initial_session)
                 session.flush()
@@ -165,10 +180,10 @@ class RelationalRepository:
         cls,
         action_type: str,
         status: str,
-        tool_name: Optional[str] = None,
+        tool_name: str | None = None,
         duration_ms: float = 0.0,
-        user_id: Optional[int] = None,
-        details: Optional[str] = None
+        user_id: int | None = None,
+        details: str | None = None
     ) -> TaskAuditLog:
         """Persists task execution record inside transactional scope."""
         session = cls.get_session()
@@ -189,7 +204,7 @@ class RelationalRepository:
             session.close()
 
     @classmethod
-    def get_user_audit_logs_with_join(cls, username: str) -> List[Dict[str, Any]]:
+    def get_user_audit_logs_with_join(cls, username: str) -> list[dict[str, Any]]:
         """
         Demonstrates: SQL JOIN query combining 'users' and 'task_audit_logs'
         with filtering and ordering.
@@ -228,7 +243,7 @@ class RelationalRepository:
             session.close()
 
     @classmethod
-    def get_tool_usage_statistics_grouped(cls) -> List[Dict[str, Any]]:
+    def get_tool_usage_statistics_grouped(cls) -> list[dict[str, Any]]:
         """
         Demonstrates: SQL GROUP BY, COUNT, and AVG aggregations with ORDER BY.
         """
@@ -271,10 +286,10 @@ class MongoDocumentStore:
       - Aggregation pipelines ($match, $group, $sort, $project)
       - Indexing for NoSQL query performance
     """
-    def __init__(self, storage_file: Optional[str] = None):
+    def __init__(self, storage_file: str | None = None):
         self.storage_file = storage_file or str(config.DATA_DIR / "jarvis_documents.json")
-        self.documents: Dict[str, Dict[str, Any]] = {}
-        self.indexes: Dict[str, Dict[Any, List[str]]] = {}  # {field_name: {field_value: [doc_ids]}}
+        self.documents: dict[str, dict[str, Any]] = {}
+        self.indexes: dict[str, dict[Any, list[str]]] = {}  # {field_name: {field_value: [doc_ids]}}
         self._load()
 
     def _load(self):
@@ -308,12 +323,12 @@ class MongoDocumentStore:
                 else:
                     self.indexes[field_name].setdefault(val, []).append(doc_id)
 
-    def rebuild_indexes(self, fields: List[str]):
+    def rebuild_indexes(self, fields: list[str]):
         for f in fields:
             self.create_index(f)
 
     # CRUD: Create
-    def insert_one(self, document: Dict[str, Any]) -> str:
+    def insert_one(self, document: dict[str, Any]) -> str:
         """
         Inserts document into collection.
         Demonstrates: Embedding relationships (embedded metadata/profile object)
@@ -329,7 +344,7 @@ class MongoDocumentStore:
         return doc_id
 
     # CRUD: Read
-    def find(self, query: Optional[Dict[str, Any]] = None, limit: int = 100) -> List[Dict[str, Any]]:
+    def find(self, query: dict[str, Any] | None = None, limit: int = 100) -> list[dict[str, Any]]:
         """Queries documents with indexed acceleration and filter matching."""
         if not query:
             return list(self.documents.values())[:limit]
@@ -351,7 +366,7 @@ class MongoDocumentStore:
         return matches
 
     # CRUD: Update
-    def update_one(self, query: Dict[str, Any], update_values: Dict[str, Any]) -> bool:
+    def update_one(self, query: dict[str, Any], update_values: dict[str, Any]) -> bool:
         """Updates the first matching document."""
         matches = self.find(query, limit=1)
         if not matches:
@@ -363,7 +378,7 @@ class MongoDocumentStore:
         return True
 
     # CRUD: Delete
-    def delete_one(self, query: Dict[str, Any]) -> bool:
+    def delete_one(self, query: dict[str, Any]) -> bool:
         """Deletes the first matching document."""
         matches = self.find(query, limit=1)
         if not matches:
@@ -375,7 +390,7 @@ class MongoDocumentStore:
         return True
 
     # NoSQL Aggregation Pipeline ($match, $group, $sort, $project)
-    def aggregate(self, pipeline: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def aggregate(self, pipeline: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         Executes a multi-stage aggregation pipeline modeled after MongoDB:
         Stages: $match, $group, $sort, $project.
@@ -395,7 +410,7 @@ class MongoDocumentStore:
             elif "$group" in stage:
                 group_spec = stage["$group"]
                 group_key = group_spec["_id"]
-                grouped: Dict[Any, List[Dict[str, Any]]] = {}
+                grouped: dict[Any, list[dict[str, Any]]] = {}
                 for doc in working_set:
                     val = doc.get(group_key.replace("$", "")) if group_key.startswith("$") else group_key
                     grouped.setdefault(val, []).append(doc)
