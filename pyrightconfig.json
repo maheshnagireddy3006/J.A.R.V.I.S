@@ -1,0 +1,9 @@
+{
+  "venvPath": ".",
+  "venv": "jarvis_env",
+  "pythonPlatform": "Windows",
+  "pythonVersion": "3.12",
+  "extraPaths": [
+    "jarvis_env/Lib/site-packages"
+  ]
+}

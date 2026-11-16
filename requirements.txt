@@ -1,0 +1,25 @@
+# Core Agent & Graph Framework
+langgraph>=0.2.0
+langchain-core>=0.3.0
+langchain-ollama>=0.2.0
+ollama>=0.3.0
+
+# Vector Database & Embeddings (CPU-bound)
+chromadb>=0.5.0
+sentence-transformers>=3.0.0
+torch>=2.2.0
+
+# Sensory Pipelines (CPU-bound)
+RealtimeSTT>=0.3.5
+faster-whisper>=1.2.0
+kokoro>=0.8.4
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.26.0
+
+# Visual UI & System Monitoring
+customtkinter>=5.2.0
+psutil>=5.9.0
+types-psutil>=5.9.0
+pillow>=10.0.0
+pyttsx3>=2.99
