@@ -127,6 +127,8 @@ class LocalTools:
             # Disk usage for Windows drives
             disks = {}
             for partition in psutil.disk_partitions(all=False):
+                if "cdrom" in partition.opts or not partition.fstype:
+                    continue
                 try:
                     usage = psutil.disk_usage(partition.mountpoint)
                     disks[partition.device] = {
@@ -134,7 +136,7 @@ class LocalTools:
                         "free_gb": round(usage.free / (1024 ** 3), 1),
                         "percent_used": usage.percent
                     }
-                except (PermissionError, FileNotFoundError):
+                except Exception:
                     continue
 
             # Battery if available
