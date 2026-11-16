@@ -62,9 +62,9 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
-    # 1-to-Many Relationships (Referencing Pattern)
-    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
-    audit_logs = relationship("TaskAuditLog", back_populates="user", cascade="all, delete-orphan")
+    # 1-to-Many Relationships (Referencing Pattern with eager joined loading)
+    sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan", lazy="joined")
+    audit_logs = relationship("TaskAuditLog", back_populates="user", cascade="all, delete-orphan", lazy="joined")
 
 
 class UserSession(Base):
@@ -147,6 +147,9 @@ class RelationalRepository:
                     expires_at=datetime.now(timezone.utc)
                 )
                 session.add(initial_session)
+                session.flush()
+                # Access eager relationship before session close
+                _ = list(user.sessions)
             session.refresh(user)
             return user
         except Exception as e:

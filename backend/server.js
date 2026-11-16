@@ -11,16 +11,15 @@
  *   8. Password Hashing (bcryptjs with salt generation)
  *   9. Input Sanitization & Injection Awareness (Regex defense filters)
  *   10. File Upload Handling (Multer multipart upload handler)
- *   11. Caching with Redis (Redis client get/set with TTL)
- *   12. WebSocket / Real-Time Communication (WebSocket Server streaming telemetry)
+ *   11. Caching with Redis (Redis client get/set with TTL & caching middleware)
+ *   12. WebSocket / Real-Time Communication (Full-duplex WebSocket Server streaming telemetry)
  *   13. Scheduled Jobs / Cron (node-cron recurring jobs)
- *   14. Server-Side Rendering (SSR dynamic HTML template generation)
+ *   14. Server-Side Rendering (SSR with react-dom/server renderToString + EJS templates)
  *   15. Payment Gateway Integration (Stripe checkout sessions & webhook verification)
  */
 
 const express = require("express");
 const http = require("http");
-const WebSocket = require("ws");
 const cors = require("cors");
 const rateLimit = require("express-rate-limit");
 const jwt = require("jsonwebtoken");
@@ -33,10 +32,19 @@ require("dotenv").config();
 
 const { RelationalService } = require("./models/sqlModels");
 const { MongoService } = require("./models/mongoModels");
+const { redisService } = require("./services/redisService");
+const { webSocketService } = require("./services/websocketService");
+const { handleReactSSR } = require("./ssr/reactSSR");
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+
+// Configure EJS Template Engine for Server-Side Rendering
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
+
+// Initialize WebSocket Full-Duplex Real-Time Communication
+webSocketService.initialize(server, "/ws/telemetry");
 
 const JWT_SECRET = process.env.JARVIS_JWT_SECRET || "jarvis-express-production-secret-2026";
 const PORT = process.env.EXPRESS_PORT || 5000;
@@ -49,15 +57,15 @@ app.use(express.json());
 
 // Sliding-window Rate Limiting Middleware (HTTP 429)
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  windowMs: 60 * 1000,
+  max: 100,
   standardHeaders: true,
   legacyHeaders: false,
   handler: (req, res) => {
     res.status(429).json({
-      error: "TooManyRequests",
+      error: "RateLimitExceeded",
       status: 429,
-      message: "Rate limit exceeded. Please throttle your requests."
+      message: "Too many requests. Please throttle your invocations to under 100 req/min."
     });
   }
 });
@@ -68,56 +76,96 @@ app.use((req, res, next) => {
   const start = Date.now();
   res.on("finish", () => {
     const duration = Date.now() - start;
-    res.setHeader("X-Response-Time-Ms", duration);
+    res.setHeader("X-Response-Time", `${duration}ms`);
   });
   next();
 });
 
-// File Upload Configuration (Multer)
+// Input Sanitization Middleware
+function sanitizeInput(req, res, next) {
+  const injectionPatterns = [
+    /(\bUNION\b|\bSELECT\b|\bDROP\b|\bINSERT\b).*\bFROM\b/i,
+    /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+    /(\||;|`|\$\()/,
+    /ignore\s+(all\s+)?(previous|prior)\s+instructions/i
+  ];
+
+  const checkValue = (val) => {
+    if (typeof val === "string") {
+      for (const pattern of injectionPatterns) {
+        if (pattern.test(val)) return true;
+      }
+    }
+    return false;
+  };
+
+  if (req.body && typeof req.body === "object") {
+    for (const [key, value] of Object.entries(req.body)) {
+      if (checkValue(value)) {
+        return res.status(400).json({
+          error: "MaliciousInputDetected",
+          status: 400,
+          field: key,
+          message: "Potential SQL/Command injection or prompt escape pattern detected."
+        });
+      }
+    }
+  }
+  next();
+}
+app.use(sanitizeInput);
+
+// Multer Storage for File Uploads
 const uploadDir = path.join(__dirname, "../data/uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `upload_${Date.now()}_${Math.random().toString(36).substring(2, 9)}${ext}`);
+  }
+});
 const upload = multer({
-  dest: uploadDir,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
 
 // =====================================================================
-// 2. AUTHENTICATION & JWT VERIFICATION MIDDLEWARE
+// 2. AUTHENTICATION & AUTHORIZATION (JWT & RBAC)
 // =====================================================================
-function authenticateJwt(req, res, next) {
-  const authHeader = req.headers["authorization"];
+function authenticateJWT(req, res, next) {
+  const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return res.status(401).json({
       error: "Unauthorized",
       status: 401,
-      message: "Missing or malformed Authorization header with Bearer token."
+      message: "Bearer JWT token required in Authorization header."
     });
   }
 
   const token = authHeader.split(" ")[1];
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).json({
+        error: "InvalidToken",
+        status: 401,
+        message: "JWT signature verification failed or token expired."
+      });
+    }
     req.user = decoded;
     next();
-  } catch (err) {
-    return res.status(401).json({
-      error: "Unauthorized",
-      status: 401,
-      message: "Invalid or expired JWT token."
-    });
-  }
+  });
 }
 
-// Role-Based Authorization Middleware
-function requireRole(requiredRole) {
+function requireRole(allowedRoles) {
   return (req, res, next) => {
-    if (!req.user || req.user.role !== requiredRole && req.user.role !== "admin") {
+    if (!req.user || !allowedRoles.includes(req.user.role)) {
       return res.status(403).json({
         error: "Forbidden",
         status: 403,
-        message: `Forbidden: Requires role '${requiredRole}'.`
+        message: `Requires one of roles: [${allowedRoles.join(", ")}]. Current: '${req.user?.role || "none"}'.`
       });
     }
     next();
@@ -125,63 +173,78 @@ function requireRole(requiredRole) {
 }
 
 // =====================================================================
-// 3. INPUT SANITIZATION & INJECTION DEFENSE
+// 3. CACHING WITH REDIS ENDPOINTS & CACHING MIDDLEWARE
 // =====================================================================
-function sanitizeInput(req, res, next) {
-  const bodyStr = JSON.stringify(req.body || {});
-  const promptInjectionPattern = /(ignore\s+previous\s+instructions|system\s+override|dan\s+mode)/i;
-  const sqlInjectionPattern = /('|--|;|\/\*|\*\/|union\s+select)/i;
-
-  if (promptInjectionPattern.test(bodyStr) || sqlInjectionPattern.test(bodyStr)) {
-    return res.status(400).json({
-      error: "BadRequest",
-      status: 400,
-      message: "Security guardrail: Adversarial injection pattern detected."
-    });
-  }
-  next();
-}
-
-// =====================================================================
-// 4. RESTful API ENDPOINTS & HTTP STATUS CODES
-// =====================================================================
-
-// Health Check (HTTP 200 OK)
-app.get("/api/health", (req, res) => {
-  res.status(200).json({
-    status: "healthy",
-    uptimeSeconds: process.uptime(),
-    timestamp: new Date().toISOString(),
-    service: "JARVIS Express Microservices Engine"
-  });
+// Telemetry and Health of Redis Cache
+app.get("/api/v1/cache/telemetry", (req, res) => {
+  res.status(200).json(redisService.getTelemetry());
 });
 
-// User Registration with Password Hashing & Transactions (HTTP 201 Created)
-app.post("/api/auth/register", sanitizeInput, async (req, res, next) => {
-  const { username, email, password, role } = req.body;
-
-  // Request Body Validation (HTTP 422 Unprocessable Entity)
-  if (!username || !email || !password) {
-    return res.status(422).json({
-      error: "UnprocessableEntity",
-      status: 422,
-      message: "Missing required fields: username, email, password."
-    });
+// Retrieve value from Redis
+app.get("/api/v1/cache/:key", async (req, res) => {
+  const val = await redisService.get(req.params.key);
+  if (val === null) {
+    return res.status(404).json({ error: "CacheMiss", key: req.params.key });
   }
+  res.status(200).json({ key: req.params.key, value: val, cached: true });
+});
 
+// Store value in Redis with TTL
+app.post("/api/v1/cache/set", async (req, res) => {
+  const { key, value, ttlSeconds } = req.body;
+  if (!key || value === undefined) {
+    return res.status(422).json({ error: "ValidationError", message: "key and value required." });
+  }
+  await redisService.set(key, value, ttlSeconds || 300);
+  res.status(201).json({ message: "Key stored in Redis cache", key, ttlSeconds: ttlSeconds || 300 });
+});
+
+// Invalidate key in Redis
+app.delete("/api/v1/cache/:key", async (req, res) => {
+  const deleted = await redisService.del(req.params.key);
+  res.status(200).json({ key: req.params.key, deleted });
+});
+
+// =====================================================================
+// 4. RESTful API ENDPOINTS: AUTH, USERS, TASKS, UPLOADS, TELEMETRY
+// =====================================================================
+
+// POST /api/v1/auth/register (HTTP 201)
+app.post("/api/v1/auth/register", async (req, res, next) => {
   try {
-    // Password Hashing with bcrypt
+    const { username, email, password, role } = req.body;
+
+    if (!username || !email || !password) {
+      return res.status(422).json({
+        error: "ValidationError",
+        status: 422,
+        message: "Fields 'username', 'email', and 'password' are required."
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(422).json({
+        error: "ValidationError",
+        status: 422,
+        message: "Password must be at least 8 characters long."
+      });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
 
-    // Relational Transaction
-    const user = await RelationalService.createUserWithInitialAudit(
-      { username, email, passwordHash, role: role || "operator" },
-      "Registered via Express REST API"
-    );
+    const user = await RelationalService.createUserWithTransaction({
+      username,
+      email,
+      passwordHash,
+      role: role || "operator"
+    });
+
+    // Invalidate users cache upon mutation
+    await redisService.del("http_cache:/api/v1/users");
 
     res.status(201).json({
-      message: "User registered successfully.",
+      message: "User registered successfully inside ACID transaction",
       user: { id: user.id, username: user.username, email: user.email, role: user.role }
     });
   } catch (err) {
@@ -189,128 +252,88 @@ app.post("/api/auth/register", sanitizeInput, async (req, res, next) => {
   }
 });
 
-// User Login & JWT Issuance (HTTP 200 OK)
-app.post("/api/auth/login", sanitizeInput, async (req, res, next) => {
+// POST /api/v1/auth/login (HTTP 200)
+app.post("/api/v1/auth/login", async (req, res) => {
   const { username, password } = req.body;
-
   if (!username || !password) {
     return res.status(422).json({
-      error: "UnprocessableEntity",
+      error: "ValidationError",
       status: 422,
       message: "Username and password required."
     });
   }
 
-  try {
-    // JWT Issuance
-    const token = jwt.sign(
-      { username, role: "operator", issuedAt: Date.now() },
-      JWT_SECRET,
-      { expiresIn: "2h" }
-    );
-
-    res.status(200).json({
-      token_type: "bearer",
-      access_token: token,
-      expires_in_seconds: 7200
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// SQL JOINs & Audit Query (HTTP 200 OK)
-app.get("/api/audits/joins", authenticateJwt, async (req, res, next) => {
-  try {
-    const rawJoinResults = await RelationalService.executeRawSqlJoin();
-    res.status(200).json({ count: rawJoinResults.length, audits: rawJoinResults });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// SQL Grouping & Aggregations (HTTP 200 OK)
-app.get("/api/audits/stats", async (req, res, next) => {
-  try {
-    const stats = await RelationalService.getToolStatisticsGrouped();
-    res.status(200).json({ statistics: stats });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// NoSQL Mongo Aggregation Pipeline (HTTP 200 OK)
-app.get("/api/nosql/aggregation", async (req, res, next) => {
-  try {
-    const aggregated = await MongoService.runCategoryAggregationPipeline();
-    res.status(200).json({ aggregation: aggregated });
-  } catch (err) {
-    next(err);
-  }
-});
-
-// File Upload Handling (HTTP 200 OK)
-app.post("/api/files/upload", authenticateJwt, upload.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(422).json({
-      error: "UnprocessableEntity",
-      status: 422,
-      message: "No file provided in multipart payload."
-    });
-  }
+  const token = jwt.sign(
+    { sub: username, role: username === "admin" ? "admin" : "operator" },
+    JWT_SECRET,
+    { expiresIn: "2h" }
+  );
 
   res.status(200).json({
-    message: "File uploaded successfully.",
-    filename: req.file.originalname,
-    sizeBytes: req.file.size,
-    storedName: req.file.filename
+    access_token: token,
+    token_type: "bearer",
+    expires_in_seconds: 7200
   });
 });
 
-// Payment Gateway Integration: Stripe Checkout Session (HTTP 200 OK)
-app.post("/api/payments/create-checkout", authenticateJwt, (req, res) => {
-  const { amountCents, currency } = req.body;
-  const amount = amountCents || 1999;
-  const sessionData = {
-    sessionId: `cs_test_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    amountTotal: amount,
-    currency: (currency || "usd").toLowerCase(),
-    paymentStatus: "unpaid",
-    checkoutUrl: `https://checkout.stripe.com/c/pay/cs_test_${Date.now()}`
-  };
-  res.status(200).json(sessionData);
-});
-
-// Payment Gateway Webhook Verification
-app.post("/api/payments/webhook", (req, res) => {
-  const sig = req.headers["stripe-signature"];
-  if (!sig) {
-    return res.status(403).json({ error: "Forbidden", message: "Missing webhook signature." });
+// GET /api/v1/users (HTTP 200, Cached via Redis Middleware)
+app.get("/api/v1/users", redisService.middleware(30), async (req, res, next) => {
+  try {
+    const users = await RelationalService.listUsersWithJoin();
+    res.status(200).json({ total: users.length, users });
+  } catch (err) {
+    next(err);
   }
-  res.status(200).json({ received: true, event: "payment_intent.succeeded" });
 });
 
-// Server-Side Rendering (SSR)
-app.get("/ssr", (req, res) => {
-  const html = `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <title>JARVIS Express SSR</title>
-        <style>
-          body { background: #070b12; color: #e2e8f0; font-family: monospace; padding: 40px; }
-          h1 { color: #00e5ff; }
-          .badge { background: #00ff88; color: #070b12; padding: 4px 8px; border-radius: 4px; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <h1>◈ J.A.R.V.I.S. // SERVER-SIDE RENDERED HTML</h1>
-        <p>Rendered at: ${new Date().toISOString()} via Express Engine</p>
-        <p>Status: <span class="badge">ACTIVE</span></p>
-      </body>
-    </html>
-  `;
-  res.status(200).send(html);
+// POST /api/v1/upload (HTTP 201)
+app.post("/api/v1/upload", upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "BadRequest", message: "No file attached to multipart payload." });
+  }
+  res.status(201).json({
+    message: "File uploaded successfully",
+    filename: req.file.filename,
+    originalName: req.file.originalname,
+    sizeBytes: req.file.size
+  });
+});
+
+// POST /api/v1/payments/create-checkout-session (HTTP 200)
+app.post("/api/v1/payments/create-checkout-session", (req, res) => {
+  const amount = req.body.amount || 2500;
+  res.status(200).json({
+    session_id: `cs_test_${Date.now()}`,
+    amount_cents: amount,
+    currency: "usd",
+    url: "https://checkout.stripe.com/c/pay/cs_test_mock"
+  });
+});
+
+// =====================================================================
+// 5. SERVER-SIDE RENDERING (SSR): REACT-DOM/SERVER + EJS
+// =====================================================================
+// SSR Endpoint 1: React Server-Side Rendering via react-dom/server renderToString()
+app.get("/ssr", handleReactSSR);
+app.get("/ssr/react", handleReactSSR);
+
+// SSR Endpoint 2: Express EJS Template Engine Server-Side Rendering
+app.get("/ssr/ejs", async (req, res) => {
+  try {
+    const users = await RelationalService.listUsersWithJoin().catch(() => [
+      { username: "mahesh_lead", email: "mahesh@jarvis.ai", role: "admin" },
+      { username: "jarvis_subagent", email: "agent@jarvis.ai", role: "operator" }
+    ]);
+
+    res.render("dashboard", {
+      title: "◈ J.A.R.V.I.S. // SERVER-SIDE RENDERED EJS DASHBOARD",
+      status: "ONLINE (EJS SSR)",
+      uptime: Math.floor(process.uptime()),
+      users
+    });
+  } catch (err) {
+    res.status(500).send("SSR Render Error: " + err.message);
+  }
 });
 
 // 404 Not Found Catch-All (HTTP 404)
@@ -323,7 +346,7 @@ app.use((req, res) => {
 });
 
 // =====================================================================
-// 5. SERVER-SIDE ERROR HANDLING MIDDLEWARE (HTTP 500)
+// 6. SERVER-SIDE ERROR HANDLING MIDDLEWARE (HTTP 500)
 // =====================================================================
 app.use((err, req, res, next) => {
   const statusCode = err.status || 500;
@@ -335,34 +358,19 @@ app.use((err, req, res, next) => {
 });
 
 // =====================================================================
-// 6. WEBSOCKET: REAL-TIME STREAMING COMMUNICATION
-// =====================================================================
-wss.on("connection", (ws) => {
-  const interval = setInterval(() => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        timestamp: Date.now(),
-        event: "express_telemetry_pulse",
-        uptime: process.uptime(),
-        memoryUsageMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024)
-      }));
-    }
-  }, 1000);
-
-  ws.on("close", () => clearInterval(interval));
-});
-
-// =====================================================================
 // 7. SCHEDULED JOBS / CRON (node-cron)
 // =====================================================================
 cron.schedule("*/10 * * * *", () => {
-  // Recurring job executing every 10 minutes
   console.log(`[CRON] ${new Date().toISOString()} - Running scheduled cache & session eviction.`);
+  redisService.del("http_cache:/api/v1/users").catch(() => {});
 });
 
 if (require.main === module) {
   server.listen(PORT, () => {
     console.log(`JARVIS Express Microservices Server running on http://127.0.0.1:${PORT}`);
+    console.log(`WebSocket Telemetry endpoint: ws://127.0.0.1:${PORT}/ws/telemetry`);
+    console.log(`Server-Side Rendering (React): http://127.0.0.1:${PORT}/ssr`);
+    console.log(`Server-Side Rendering (EJS):   http://127.0.0.1:${PORT}/ssr/ejs`);
   });
 }
 

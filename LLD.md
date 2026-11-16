@@ -189,34 +189,38 @@ Architected in Third Normal Form (3NF) to eliminate data redundancy and insertio
 
 ---
 
-## 4. Multi-Tier Caching Subsystem (`cache.py`)
+## 4. Multi-Tier Caching Subsystem (`cache.py` & `backend/services/redisService.js`)
 
-* **Redis Client Integration**: Connects to `redis://` via `redis.from_url` with socket timeout.
-* **In-Memory Fallback**: Thread-safe dictionary storing `{"val": Any, "exp": float}` with exact epoch expiration.
-* **Cache Telemetry**: Tracks hits, misses, hit ratio percentage, and active key counts.
+* **Redis Client Integration (Node.js & Python)**:
+  * Node.js: `backend/services/redisService.js` initializes `createClient({ url: process.env.REDIS_URL })` with auto-reconnect strategy, `client.setEx(key, ttl, value)`, `client.get(key)`, and `client.del(key)`.
+  * Python: `cache.py` connects to `redis://` via `redis.from_url` with strict `socket_connect_timeout=0.2s` and fallback.
+* **Express Caching Middleware**: Intercepts HTTP requests, serves cached responses with `X-Cache: HIT`, or executes route and caches responses with `X-Cache: MISS`.
+* **In-Memory Fallback**: Thread-safe LRU dictionary storing `{"val": Any, "exp": float}` with exact epoch expiration when Redis server is offline.
+* **Cache Telemetry**: Tracks hits, misses, hit ratio percentage, and active key counts exposed at `GET /api/v1/cache/telemetry` and `GET /api/v1/cache/stats`.
 
 ---
 
-## 5. RESTful API & Server-Side Implementation (`server.py`)
+## 5. RESTful API & Server-Side Implementation (`server.py` & `backend/server.js`)
 
-* **Framework**: FastAPI (ASGI) executed by Uvicorn workers.
+* **Frameworks**: FastAPI (ASGI on port 8000) and Express.js (on port 5000).
 * **Status Codes & Semantics**:
   * `200 OK`: Successful retrieval, tool execution, telemetry fetch.
-  * `201 Created`: Successful user registration, document insertion.
+  * `201 Created`: Successful user registration, document insertion, cache set.
   * `400 Bad Request`: Validation failure, prompt injection flagged.
   * `401 Unauthorized`: Missing or expired JWT bearer token.
   * `403 Forbidden`: Insufficient RBAC role permissions.
   * `413 Payload Too Large`: Uploaded file exceeds 10MB limit.
   * `422 Unprocessable Entity`: Request body schema validation error.
   * `429 Too Many Requests`: Client exceeded sliding-window rate limit.
-  * `500 Internal Server Error`: Unhandled application exception.
-* **Middleware Stack**:
-  * Timing middleware setting `X-Process-Time-Ms`.
-  * Sliding-window rate limiter middleware.
-  * Structured request logger.
-  * CORS middleware allowing trusted origins.
-* **File Upload Handling**: Inspects `UploadFile` extension against whitelisted set (`.txt`, `.json`, `.csv`, `.wav`, `.log`, `.md`), enforces 10MB ceiling, and writes to `data/uploads/`.
-* **Server-Side Rendering (SSR)**: `/ssr/dashboard` dynamically constructs and returns server-rendered HTML using `HTMLResponse`.
+  * `500 Internal Server Error`: Centralized server-side error handling middleware.
+* **WebSocket / Real-Time Communication**:
+  * Node.js: `backend/services/websocketService.js` creates a native `ws.Server` mounted on `/ws/telemetry`, maintaining connection sets, ping/pong heartbeats (30s), and broadcasting 2s live system metrics.
+  * Python: FastAPI `@app.websocket("/ws/telemetry")` streams live hardware pulses at 1Hz.
+  * Frontend: `web/src/hooks/useWebSocket.js` custom React hook and `web/src/components/LiveTelemetry.jsx` providing bi-directional full-duplex communication and command dispatching.
+* **Server-Side Rendering (SSR)**:
+  * React SSR Engine (`backend/ssr/reactSSR.js`): Uses `react-dom/server`'s `renderToString` to pre-render the `ServerHUD` React component tree on the server with injected hydration state (`window.__INITIAL_STATE__`) at `GET /ssr` and `GET /ssr/react`.
+  * Express EJS Engine (`backend/views/dashboard.ejs`): Server-rendered templates at `GET /ssr/ejs`.
+  * Python Jinja2 Engine (`templates/dashboard.html`): Server-rendered template response via FastAPI `Jinja2Templates` at `GET /ssr/dashboard`.
 * **Payment Gateway Integration**:
   * `POST /api/v1/payments/create-checkout`: Creates session ID and checkout URL.
   * `POST /api/v1/payments/webhook`: Validates HMAC-SHA256 signature header and triggers fulfillment.

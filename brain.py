@@ -124,20 +124,24 @@ class LocalTools:
             ram_used_gb = round(vm.used / (1024 ** 3), 2)
             ram_percent = vm.percent
 
-            # Disk usage for Windows drives
+            # Disk usage for Windows drives (direct check avoiding partition probe delays)
             disks = {}
-            for partition in psutil.disk_partitions(all=False):
-                if "cdrom" in partition.opts or not partition.fstype:
-                    continue
-                try:
-                    usage = psutil.disk_usage(partition.mountpoint)
-                    disks[partition.device] = {
-                        "total_gb": round(usage.total / (1024 ** 3), 1),
-                        "free_gb": round(usage.free / (1024 ** 3), 1),
-                        "percent_used": usage.percent
+            try:
+                usage = psutil.disk_usage("C:\\")
+                disks["C:\\"] = {
+                    "total_gb": round(usage.total / (1024 ** 3), 1),
+                    "free_gb": round(usage.free / (1024 ** 3), 1),
+                    "percent_used": usage.percent
+                }
+                if os.path.exists("D:\\"):
+                    d_usage = psutil.disk_usage("D:\\")
+                    disks["D:\\"] = {
+                        "total_gb": round(d_usage.total / (1024 ** 3), 1),
+                        "free_gb": round(d_usage.free / (1024 ** 3), 1),
+                        "percent_used": d_usage.percent
                     }
-                except Exception:
-                    continue
+            except Exception:
+                pass
 
             # Battery if available
             battery = psutil.sensors_battery()

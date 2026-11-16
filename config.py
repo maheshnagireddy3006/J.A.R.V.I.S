@@ -8,6 +8,12 @@ Hardware Profile:
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Environment variables & secrets management
+# Automatically loads secrets from .env into runtime environment
+load_dotenv()
+
 
 # ==========================================
 # 1. CORE DIRECTORIES & PATHS

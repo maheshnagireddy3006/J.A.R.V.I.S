@@ -35,7 +35,12 @@ class CacheManager:
         """Attempts connection to Redis if redis-py library is present."""
         try:
             import redis
-            self.redis_client = redis.from_url(self.redis_url, socket_timeout=1.0)
+            self.redis_client = redis.from_url(
+                self.redis_url,
+                socket_connect_timeout=0.2,
+                socket_timeout=0.2,
+                retry_on_timeout=False
+            )
             self.redis_client.ping()
             logger.info(f"Connected to remote Redis instance at: {self.redis_url}")
         except Exception as e:

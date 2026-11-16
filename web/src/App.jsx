@@ -2,6 +2,7 @@ import React from "react";
 import { BrowserRouter as Router, Routes, Route, Link, NavLink } from "react-router-dom";
 import Dashboard from "./components/Dashboard";
 import LoginForm from "./components/LoginForm";
+import LiveTelemetry from "./components/LiveTelemetry";
 import "./index.css";
 
 /**
@@ -34,6 +35,12 @@ export default function App() {
               DASHBOARD
             </NavLink>
             <NavLink
+              to="/realtime"
+              className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+            >
+              WS TELEMETRY
+            </NavLink>
+            <NavLink
               to="/architecture"
               className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
             >
@@ -51,6 +58,7 @@ export default function App() {
         {/* Client-Side Route Declarations */}
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/realtime" element={<div className="container"><LiveTelemetry /></div>} />
           <Route path="/login" element={<LoginForm />} />
           <Route
             path="/architecture"

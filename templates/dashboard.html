@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+  <style>
+    body {
+      background-color: #070b12;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 32px;
+      margin: 0;
+    }
+    .header {
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    .title {
+      color: #00e5ff;
+      margin: 0 0 8px 0;
+      font-size: 26px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(0, 255, 136, 0.1);
+      color: #00ff88;
+      border: 1px solid rgba(0, 255, 136, 0.3);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 class="title">{{ title }}</h1>
+    <p style="color: #94a3b8; margin: 0;">Server-Side Rendered via FastAPI Jinja2 Templates Engine</p>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div style="color: #64748b; font-size: 12px; text-transform: uppercase;">Service</div>
+      <div style="color: #00e5ff; font-size: 20px; font-weight: bold; margin-top: 4px;">{{ service }}</div>
+    </div>
+    <div class="card">
+      <div style="color: #64748b; font-size: 12px; text-transform: uppercase;">System Status</div>
+      <div style="color: #00ff88; font-size: 20px; font-weight: bold; margin-top: 4px;">{{ status }}</div>
+    </div>
+    <div class="card">
+      <div style="color: #64748b; font-size: 12px; text-transform: uppercase;">Cache Tier</div>
+      <div style="color: #f59e0b; font-size: 20px; font-weight: bold; margin-top: 4px;">{{ cache_tier }}</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top: 24px;">
+    <span class="badge">SSR JINJA2 ACTIVE</span>
+    <p style="color: #94a3b8; margin: 12px 0 0 0;">
+      Pre-rendered by FastAPI on Windows host. Hardware isolation enforces 6GB VRAM on Nvidia RTX 4050 exclusively for Ollama LLM.
+    </p>
+  </div>
+</body>
+</html>

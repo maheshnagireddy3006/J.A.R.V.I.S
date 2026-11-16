@@ -2,6 +2,9 @@
 AUTOMATED API INTEGRATION TESTS: RESTful ENDPOINTS, HTTP CODES, VALIDATION & AUTH
 """
 
+import os
+os.environ["TESTING"] = "1"
+import json
 import pytest
 from fastapi.testclient import TestClient
 from server import app
@@ -63,3 +66,17 @@ def test_ssr_dashboard_endpoint():
     assert "text/html" in response.headers["content-type"]
     assert "◈ JARVIS // SERVER-SIDE RENDERED DASHBOARD" in response.text
 
+
+def test_redis_cache_endpoints():
+    # Set in Redis Cache
+    resp = client.post("/api/v1/cache/set", json={"key": "test_redis_key", "value": "redis_val", "ttl_seconds": 60})
+    assert resp.status_code == 201
+
+    # Get from Redis Cache
+    resp_get = client.get("/api/v1/cache/test_redis_key")
+    assert resp_get.status_code == 200
+    assert resp_get.json()["value"] == "redis_val"
+
+    # Delete from Redis Cache
+    resp_del = client.delete("/api/v1/cache/test_redis_key")
+    assert resp_del.status_code == 200

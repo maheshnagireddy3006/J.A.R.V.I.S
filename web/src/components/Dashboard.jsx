@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import TelemetryCard from "./TelemetryCard";
 import CommandForm from "./CommandForm";
 import TerminalConsole from "./TerminalConsole";
+import LiveTelemetry from "./LiveTelemetry";
 
 /**
  * Main Holographic Dashboard Component.
@@ -163,6 +164,9 @@ export default function Dashboard() {
         <TelemetryCard label="Cache Hit Ratio" value={telemetry.cache_hit_ratio} unit="%" colorHex="#00ff88" subtext="Redis / In-Memory Tier" />
         <TelemetryCard label="Neural Engine" value="Llama 3.1" unit="8B" colorHex="#a855f7" subtext="Ollama on RTX 4050 GPU" />
       </div>
+
+      {/* Real-Time WebSocket Telemetry Component */}
+      <LiveTelemetry />
 
       {/* Center Terminal Console */}
       <TerminalConsole logs={logs} onClear={() => setLogs([])} />
