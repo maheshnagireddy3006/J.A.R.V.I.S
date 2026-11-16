@@ -1,0 +1,35 @@
+version: "3.8"
+
+services:
+  jarvis-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jarvis_core_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama3.1:8b
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=sqlite:///data/jarvis_relational.db
+      - JARVIS_JWT_SECRET=production-secret-docker-token-2026
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  redis:
+    image: redis:7-alpine
+    container_name: jarvis_redis_cache
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:

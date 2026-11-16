@@ -1,235 +1,247 @@
 # High-Level Design (HLD)
 
 ## Project Name: J.A.R.V.I.S. (Just A Rather Very Intelligent System)
-### Subtitle: Edge-First Local Graph-Agent Desktop Ecosystem
-**Document Version:** 1.0.0  
+### Subtitle: Edge-First Local Graph-Agent & Microservices Ecosystem
+**Document Version:** 2.0.0  
 **Author:** Mahesh Balaji Nagireddy (@maheshnagireddy3006)  
 **Date:** November 2026  
-**Status:** Implemented & Validated  
+**Status:** Fully Implemented & Validated  
 
 ---
 
-## 1. System Architecture Overview
-J.A.R.V.I.S. is engineered with a modular, decoupled, edge-first architecture. It combines a stateful graph agent (`LangGraph`), local neural inference (`Ollama`), persistent vector embeddings (`ChromaDB`), neural sensory processing (`RealtimeSTT` & `Kokoro-82M`), and a futuristic desktop dashboard (`CustomTkinter`).
+## 1. System Design Basics: Frontend, Backend, DB & Systems Integration
 
-The architecture strictly adheres to three fundamental engineering principles:
-1. **Asymmetric Compute Partitioning**: Dedicating the discrete GPU exclusively to the large-parameter LLM, while strictly binding sensory speech processing, vector embeddings, and OS tools to multi-threaded CPU cores to prevent VRAM saturation and out-of-memory crashes.
-2. **Asynchronous Non-Blocking Concurrency**: Isolating GUI event handling, audio streaming, and neural reasoning across independent OS threads coordinated by thread-safe FIFO queues (`queue.Queue`).
-3. **Closed-Loop Self-Healing Orchestration**: Structuring tool execution within a cyclic directed graph where execution faults trigger autonomous LLM-driven root cause diagnosis and dynamic argument correction.
+J.A.R.V.I.S. is architected as an integrated edge ecosystem composed of 6 distinct system tiers:
+1. **Frontend Presentation Tier**: Dual user interfaces consisting of a Windows native HUD (`CustomTkinter`) and a responsive web dashboard (`React 18` + `Vite`).
+2. **Backend Microservices Tier**: High-concurrency ASGI microservices platform (`FastAPI` + `Uvicorn`) providing RESTful APIs, WebSockets, and Server-Side Rendering (SSR).
+3. **Cognitive Agent & Orchestration Tier**: Stateful cyclic graph machine (`LangGraph`) hosting a multi-step agent with automated self-correction, prompt engineering, structured outputs, and local tool execution.
+4. **Sensory Processing Tier**: CPU-isolated streaming speech recognition (`RealtimeSTT` with Whisper-base int8) and neural vocal synthesis (`Kokoro-82M`).
+5. **Database & Persistence Tier**: Dual persistence layers featuring an ACID relational store (`SQLite`/`PostgreSQL` via `SQLAlchemy` ORM) and a document store (`ChromaDB` vector embeddings + Mongo-style document collections).
+6. **Integration & Infrastructure Tier**: Multi-tier caching (`Redis`), scheduled recurring jobs (Cron simulation), third-party REST integrations, payment gateway adapters, and Docker container orchestration.
 
 ```mermaid
 flowchart TD
-    subgraph UI_Layer ["Presentation Layer (Main GUI Thread)"]
-        UI["CustomTkinter Holographic HUD\n(1180x760 Dark Dashboard)"]
-        Telemetry["Hardware Telemetry Monitor\n(CPU, RAM, Status Badges)"]
-        Terminal["Live Event Log Console\n(Color-Tagged Terminal Stream)"]
+    subgraph Client_Tier ["1. Frontend Presentation Tier"]
+        DesktopHUD["CustomTkinter Desktop HUD\n(Native GUI Thread)"]
+        ReactWeb["React 18 Web HUD\n(Components, useState, useEffect)"]
+        SSRView["Server-Side Rendered View\n(Jinja2 Dynamic HTML)"]
     end
 
-    subgraph Sensory_Layer ["Sensory Processing Layer (CPU Multi-Threaded)"]
-        STT["RealtimeSTT Worker\n(Whisper base.en int8 on CPU)"]
-        TTS["Kokoro-82M TTS Worker\n(24kHz Neural Synthesis on CPU)"]
-        MIC[("Microphone Device")]
-        SPK[("Audio Output / Speaker")]
+    subgraph Backend_Tier ["2. Backend Microservices Tier (FastAPI / Uvicorn)"]
+        APIRouter["RESTful API Router\n(/api/v1/health, /query, /auth)"]
+        WSEndpoint["WebSocket Real-Time Server\n(/ws/telemetry @ 1Hz)"]
+        Middleware["ASGI Middleware Stack\n(Rate Limiter, Timing, CORS)"]
+        Validation["Request Body Validation\n(Pydantic Schemas)"]
     end
 
-    subgraph Core_Engine ["Cognitive Orchestration Layer (Dedicated Agent Thread)"]
-        Main["JarvisEcosystem Controller\n(main.py Bootstrapper)"]
-        Graph["LangGraph State Machine\n(JarvisBrain)"]
-        Router{"Intent Router\n(LLM JSON Classifier)"}
-        SelfHeal{"Self-Correction Loop\n(Error Recovery Node)"}
+    subgraph Agent_Tier ["3. Cognitive Agent Tier (LangGraph & Ollama)"]
+        MultiAgent["Multi-Step Agent Workflow\n(LangGraph StateGraph)"]
+        IntentRouter{"Intent Router Node\n(Structured JSON Output)"}
+        SelfCorrection{"Self-Correction Node\n(Automated Error Recovery)"}
+        ToolEngine["Function Calling / Tools\n(Health, Apps, Shell, Files)"]
+        OllamaEngine[("Ollama Local LLM\nLlama 3.1 8B on RTX 4050 GPU")]
     end
 
-    subgraph Memory_Layer ["Memory Subsystem Layer (CPU)"]
-        Chroma["ChromaDB Vector Store\n(data/chroma)"]
-        BGE["BAAI/bge-small-en-v1.5\n(Sentence Transformers)"]
+    subgraph Sensory_Tier ["4. Sensory Processing Tier (CPU Isolated)"]
+        STT["RealtimeSTT Engine\n(Whisper base.en int8)"]
+        TTS["Kokoro-82M Synthesizer\n(24kHz Neural Audio)"]
     end
 
-    subgraph Tool_Layer ["Local Automation Layer (Host OS)"]
-        Tools["LocalTools Engine"]
-        Health["System Diagnostics (psutil)"]
-        AppLaunch["App Launcher (subprocess)"]
-        Shell["PowerShell Executor (sandboxed)"]
-        FileSearch["File Search (rglob)"]
+    subgraph Data_Tier ["5. Database & Memory Tier"]
+        SQLDB[("Relational SQL DB\nUsers, Sessions, AuditLogs")]
+        ChromaStore[("ChromaDB Vector Store\nBGE-small-en-v1.5 RAG")]
+        DocStore[("Mongo Document Store\nCRUD, Indexes, Aggregations")]
     end
 
-    subgraph Model_Layer ["LLM Inference Engine (GPU Accelerated)"]
-        Ollama["Ollama Local REST Server\n(http://localhost:11434)"]
-        Llama["Llama 3.1 8B Q4_K_M\n(~4.8GB Dedicated VRAM)"]
+    subgraph System_Tier ["6. System & Integration Tier"]
+        RedisCache[("Redis / In-Memory Cache\nTTL, LRU, Hit/Miss Telemetry")]
+        CronJob["Scheduled Jobs / Cron\n(Background Async Tasks)"]
+        ExtAPI["3rd-Party APIs\n(Open-Meteo Weather)"]
+        PaymentGW["Payment Gateway\n(Stripe Checkout & Webhook)"]
+        DockerEnv["Containerization\n(Docker & Docker-Compose)"]
     end
 
-    %% Audio connections
-    MIC --> STT
-    STT -->|"User Speech Event"| Main
-    Main -->|"Enqueues Task"| Graph
-    Graph -->|"Audio Speech Queue"| TTS
-    TTS --> SPK
+    %% Inter-tier connections
+    ReactWeb -->|HTTP / JSON| Middleware
+    ReactWeb -->|WebSocket| WSEndpoint
+    DesktopHUD -->|Thread Queues| MultiAgent
+    SSRView -.-> APIRouter
 
-    %% UI Connections
-    UI -->|"Text Directives"| Main
-    Main -->|"ui_queue (Logs & Telemetry)"| UI
-    Telemetry -.-> UI
-    Terminal -.-> UI
+    Middleware --> Validation --> APIRouter
+    APIRouter --> MultiAgent
+    APIRouter --> SQLDB & DocStore & RedisCache & PaymentGW & ExtAPI
 
-    %% Brain Connections
-    Graph --> Router
-    Router -->|"Automation"| Tools
-    Router -->|"Memory Query"| Chroma
-    Router -->|"Conversation"| Ollama
-    Tools --> Health & AppLaunch & Shell & FileSearch
-    Tools -->|"Execution Failure"| SelfHeal
-    SelfHeal -->|"Corrected Args / Retry"| Tools
-    SelfHeal -->|"Abort Diagnosis"| Ollama
-    Chroma <--> BGE
+    MultiAgent --> IntentRouter
+    IntentRouter -->|Automation| ToolEngine
+    IntentRouter -->|Memory Query| ChromaStore
+    IntentRouter -->|Conversation| OllamaEngine
+    ToolEngine -->|Error Caught| SelfCorrection
+    SelfCorrection -->|Corrected Args| ToolEngine
+    SelfCorrection -.-> OllamaEngine
 
-    %% Model bindings
-    Router -.->|"Inference Call"| Ollama
-    SelfHeal -.->|"Diagnostic Call"| Ollama
-    Ollama --- Llama
+    STT --> MultiAgent
+    MultiAgent --> TTS
+    CronJob --> ChromaStore & RedisCache
+    DockerEnv -.-> Backend_Tier
 ```
 
 ---
 
-## 2. Hardware Resource Partitioning Strategy
+## 2. Multi-Step Agent Architecture & Flow
+The cognitive engine implements an autonomous stateful multi-step agent via `LangGraph`:
+* **State Machine Cycle**: `intent_router` $\rightarrow$ `tool_executor` $\leftrightarrow$ `error_recovery` $\rightarrow$ `response_generator`.
+* **Dynamic Branching**: The agent evaluates user intent using deterministic LLM prompt engineering and routes tasks across internal and external tools.
+* **Self-Healing Capabilities**: Catches unhandled exceptions, feeds stack traces back to `Llama 3.1 8B`, and retries with corrected parameters up to 2 times (`MAX_SELF_CORRECTION_RETRIES = 2`).
 
-| Hardware Resource | Dedicated Subsystem | Allocation / Constraints | Rationale |
+```mermaid
+stateDiagram-v2
+    [*] --> IntentRouter: User Input Ingested
+    IntentRouter --> ToolExecutor: Intent == Automation
+    IntentRouter --> MemoryRetriever: Intent == Memory Query
+    IntentRouter --> ResponseGenerator: Intent == Conversation
+
+    ToolExecutor --> ResponseGenerator: Execution Success
+    ToolExecutor --> ErrorRecovery: Execution Error Caught
+
+    state ErrorRecovery {
+        [*] --> DiagnoseTraceback
+        DiagnoseTraceback --> InspectCause
+        InspectCause --> FormulateCorrectedArgs: Repairable
+        InspectCause --> AbortExecution: Fatal / Unrecoverable
+    }
+
+    ErrorRecovery --> ToolExecutor: Action == Retry (Corrected Args)
+    ErrorRecovery --> ResponseGenerator: Action == Abort (Report Diagnosis)
+
+    MemoryRetriever --> ResponseGenerator: Injected Context
+    ResponseGenerator --> [*]: Final Vocal & Text Response
+```
+
+---
+
+## 3. Prompt Engineering & Structured Outputs
+
+### 3.1. Prompt Engineering Strategy
+* **System Prompt Injection**: Establishes persona constraints, professional tone, voice readiness, and safety boundaries.
+* **Context Assembly**: Concatenates retrieved RAG vector context, relational audit logs, and previous turn state into distinct prompt blocks.
+* **Few-Shot Demonstration**: Guides LLM reasoning for Windows PowerShell parameter formation and path escaping.
+
+### 3.2. Structured Outputs
+* **JSON Schema Enforcement**: Prompts enforce strict RFC 8259 JSON outputs without conversational preamble or markdown code blocks.
+* **Resilient Extraction**: Employs regex parsers (`r'\{.*\}'`) to intercept JSON payloads if wrapped in formatting tags, with automated fallback to default schemas.
+
+---
+
+## 4. RAG — Embeddings & Vector Retrieval
+* **Vector Store**: `ChromaDB` persistent client located at `data/chroma`.
+* **Embedding Model**: `BAAI/bge-small-en-v1.5` ($384$-dimensional vectors, memory footprint $\approx 133\text{MB}$) executed exclusively on CPU.
+* **Retrieval Protocol**: User input is converted to an embedding vector; top-$K$ ($K=3$) nearest neighbor records are retrieved using cosine distance and injected into the response generator prompt context.
+* **Autonomous Storage**: Meaningful user assertions ($>10$ characters) are automatically embedded and persisted.
+
+---
+
+## 5. Streaming Responses
+* **Server-Sent Events (SSE)**: The `/api/v1/agent/stream` endpoint utilizes an asynchronous token generator yielding formatted event-stream data (`data: {"token": "..."}\n\n`).
+* **Vocal Streaming**: Kokoro-82M synthesizes audio generator chunks in real-time, streaming directly to `sounddevice` playback buffers to eliminate wait times.
+
+---
+
+## 6. Prompt Injection Awareness & Defenses
+* **Multi-Layer Threat Model**: Defends against prompt injection, jailbreaks, system prompt exfiltration, and privilege escalation.
+* **Pattern Recognition**: The `SecuritySanitizer` scans inputs using regex rules:
+  * Detects `"ignore all previous instructions"`, `"you are now dan"`, `"system override"`.
+* **Interception**: Flagged prompts are blocked with HTTP 400 Bad Request before token generation begins.
+
+---
+
+## 7. Token & Cost Monitoring
+* **Telemetry Engine**: `TokenUsageTracker` monitors prompt tokens, completion tokens, execution latency, and cumulative invocations.
+* **Cost Estimation**: Calculates simulated cloud GPU expenditure savings based on token counts (e.g. $0.003 / 1\text{k}$ tokens).
+* **Metrics API**: Live metrics surfaced via `/api/v1/health` and the React Web HUD.
+
+---
+
+## 8. LLM Eval Sets (Benchmark Suite)
+* **Automated Evaluation Runner**: Exposes `/api/v1/eval/run` executing standardized benchmark queries across:
+  1. System Health automation intent detection.
+  2. Episodic memory query recall.
+  3. General conversational dialogue.
+* **Scoring Metrics**: Computes intent match accuracy percentage, tool selection precision, and execution latency in milliseconds.
+
+---
+
+## 9. Function Calling / Tool Use & LLM API Integration
+* **Local REST Integration**: Communicates directly with local Ollama daemon (`http://localhost:11434`) using `ChatOllama` / `httpx`.
+* **Tool Bindings**:
+  * `get_system_health`: Real-time hardware telemetry (`psutil`).
+  * `launch_application`: Windows executable launcher (`subprocess.Popen`).
+  * `execute_shell_command`: Sandboxed PowerShell executor with 15s timeout and dangerous command filters.
+  * `search_local_files`: Recursive filesystem scanner (`Path.rglob`).
+
+---
+
+## 10. RESTful Endpoint Design & HTTP Status Codes
+
+The API conforms to standard RESTful resource hierarchy conventions:
+
+| Method | Endpoint | Description | Status Codes |
 | :--- | :--- | :--- | :--- |
-| **GPU (Nvidia RTX 4050 6GB GDDR6)** | Ollama LLM (`llama3.1:8b`) | **$\le 4.9\text{ GB}$ VRAM** (Reserved 100% for LLM) | Prevents GPU VRAM paging and out-of-memory crashes when concurrent audio and embedding pipelines execute. |
-| **CPU (Intel i5-13450HX 10C / 16T)** | Sensory Pipelines, Memory & Agent | **8 Dedicated Worker Threads** (`OMP_NUM_THREADS=8`) | Whisper-int8 and Kokoro-82M are optimized for modern AVX2 CPU instructions without competing with GPU shaders. |
-| **System RAM (24GB DDR5)** | OS, Python Host & ChromaDB | **$\approx 3.2\text{ GB}$ Active Footprint** | Low system memory overhead leaves ample headroom for multitasking during complex automation. |
+| **GET** | `/api/v1/health` | Hardware telemetry, cache stats, token metrics | `200 OK` |
+| **POST** | `/api/v1/auth/register` | Register user with salted password hash | `201 Created`, `400 Bad Request`, `422 Unprocessable` |
+| **POST** | `/api/v1/auth/login` | Authenticate credentials & issue JWT | `200 OK`, `401 Unauthorized` |
+| **GET** | `/api/v1/auth/oauth/authorize` | Generate OAuth 2.0 redirect URL | `200 OK` |
+| **GET** | `/api/v1/auth/oauth/callback` | Exchange OAuth code for claims | `200 OK`, `400 Bad Request` |
+| **POST** | `/api/v1/agent/query` | Execute multi-step agent workflow | `200 OK`, `400 Bad Request`, `401 Unauthorized`, `403 Forbidden` |
+| **POST** | `/api/v1/agent/stream` | Stream LLM response via SSE | `200 OK` |
+| **GET** | `/api/v1/audit/logs` | Query audit logs via SQL JOIN | `200 OK`, `401 Unauthorized` |
+| **GET** | `/api/v1/audit/stats` | SQL GROUP BY aggregations | `200 OK` |
+| **POST** | `/api/v1/documents` | Create NoSQL document | `201 Created`, `401 Unauthorized` |
+| **GET** | `/api/v1/documents` | Query documents with index filter | `200 OK` |
+| **POST** | `/api/v1/documents/aggregate`| Execute NoSQL aggregation pipeline | `200 OK` |
+| **POST** | `/api/v1/files/upload` | Multipart file upload with size guard | `200 OK`, `413 Too Large`, `422 Unprocessable` |
+| **GET** | `/api/v1/external/weather` | 3rd-party REST API integration | `200 OK` |
+| **GET** | `/api/v1/eval/run` | Execute LLM evaluation benchmark | `200 OK` |
+| **POST** | `/api/v1/payments/create-checkout` | Stripe/Razorpay session creation | `200 OK` |
+| **POST** | `/api/v1/payments/webhook` | Webhook HMAC signature verification | `200 OK`, `403 Forbidden` |
+| **GET** | `/ssr/dashboard` | Dynamic Server-Side Rendered HTML | `200 OK` |
+| **WS** | `/ws/telemetry` | Real-time 1Hz WebSocket stream | `101 Switching Protocols` |
 
 ---
 
-## 3. Subsystem Deconstruction
-
-### 3.1. Presentation Layer (CustomTkinter HUD)
-* **Module**: `ui_panel.py` (`JarvisUIPanel` class)
-* **Execution Context**: Windows Native Main Thread.
-* **Responsibilities**:
-  * Renders a 1180x760 holographic dark cockpit panel with cyan (`#00e5ff`) accents and deep slate backgrounds (`#070b12`).
-  * Polls `ui_queue` every $50\text{ms}$ (`self.after(50, ...)`) to consume log tuples `(tag, message)` and status updates `(status_text, color_hex)` from background threads without blocking.
-  * Polls system hardware metrics every $1000\text{ms}$ (`psutil`) to update CPU progress bars, RAM percentage, and peripheral indicators.
-  * Provides an interactive command bar supporting Enter-to-submit, microphone mute toggling, and quick system health diagnostics.
-
-### 3.2. Sensory Processing Layer (Audio Engine)
-* **Module**: `audio_engine.py` (`AudioEngine`, `RealtimeSTTListener`, `KokoroTTS` classes)
-* **Execution Context**: Two dedicated OS threads (`JarvisSTTWorker`, `JarvisTTSWorker`) plus RealtimeSTT background reader processes.
-* **Responsibilities**:
-  * **Speech-to-Text**: Uses `RealtimeSTT` wrapping `faster-whisper` (`base.en` model, `int8` compute type) with Silero VAD. Listens continuously, segments vocal pauses ($1.0\text{s}$ post-speech silence window), transcribes speech into text, and dispatches the prompt to `JarvisEcosystem.handle_user_input`.
-  * **Text-to-Speech**: Employs `Kokoro-82M` (KPipeline, American English `af_heart` voice) at $24\text{kHz}$ sampling rate. Streams synthesized audio chunks to `sounddevice` output buffers.
-  * **Fallback Handling**: If Kokoro fails or is uninitialized, the engine safely degrades to Windows SAPI-based `pyttsx3` offline speech synthesis.
-
-### 3.3. Cognitive Orchestration Layer (Jarvis Brain)
-* **Module**: `brain.py` (`JarvisBrain`, `JarvisState`, `MemorySubsystem`, `LocalTools`)
-* **Execution Context**: Dedicated worker thread (`JarvisAgentWorker`).
-* **Graph Topology**:
-  * **State Graph**: Manages transitions between 5 nodes: `intent_router`, `tool_executor`, `error_recovery`, `memory_retriever`, and `response_generator`.
-  * **Intent Router**: Invokes Llama 3.1 8B with a structured JSON schema to categorize user directives into `automation`, `memory_query`, or `conversation`.
-  * **Self-Correction Engine**: If tool execution encounters an unhandled exception or non-zero subprocess return code, execution routes to `error_recovery`. The error traceback, original user prompt, and failed parameters are evaluated by Llama 3.1 8B to deduce the root cause and generate corrected parameters for an immediate retry.
-
-### 3.4. Memory Subsystem Layer
-* **Module**: `brain.py` (`MemorySubsystem` class)
-* **Persistence Location**: `data/chroma/` (Embedded SQLite3 database + HNSW index)
-* **Responsibilities**:
-  * Uses `chromadb.PersistentClient` with `BAAI/bge-small-en-v1.5` embeddings on CPU.
-  * Stores conversational snippets and operational facts.
-  * Performs semantic top-$K$ ($K=3$) cosine-similarity queries to inject relevant episodic memory records into the response generation context.
-
-### 3.5. Host Automation & Tool Layer
-* **Module**: `brain.py` (`LocalTools` class)
-* **Capabilities**:
-  * `get_system_health()`: Gathers CPU load, core topology, RAM metrics, partition disk usage, and battery state.
-  * `launch_application(app_identifier)`: Resolves application aliases (e.g., `calc`, `notepad`, `terminal`, `code`, `chrome`) and executes them via `subprocess.Popen` or `os.startfile`.
-  * `execute_shell_command(command)`: Runs non-interactive PowerShell processes with timeout guards ($15\text{s}$) and dangerous command filters (blocking destructive disk formatting or file removal).
-  * `search_local_files(directory, pattern)`: Recursively scans local workspaces matching wildcard patterns, capped at 15 matches to avoid context bloating.
+## 11. Middleware, Validation & Error Handling
+* **Middleware**: Custom ASGI middleware tracking execution time (`X-Process-Time-Ms`), structured logging, and sliding-window rate limiting.
+* **Validation**: Pydantic schemas validating input types, string bounds, and regex constraints with automatic HTTP 422 generation.
+* **Error Handling**: Centralized exception handlers converting unhandled exceptions into RFC 7807 compliant JSON problem details.
 
 ---
 
-## 4. End-to-End Sequence Workflows
-
-### 4.1. Voice Query to Vocal Response Workflow
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as User (Voice / Speech)
-    participant Mic as Microphone
-    participant STT as RealtimeSTT (CPU Whisper)
-    participant Main as JarvisEcosystem Controller
-    participant Brain as LangGraph Agent (JarvisBrain)
-    participant LLM as Ollama Llama 3.1 8B
-    participant TTS as Kokoro-82M TTS Engine
-    participant UI as CustomTkinter HUD
-
-    User->>Mic: Spoken Command ("Open Calculator")
-    Mic->>STT: Audio Stream (16kHz PCM)
-    STT->>STT: Silero VAD detects end of speech
-    STT->>STT: Transcribes to text ("Open Calculator")
-    STT->>Main: on_user_speech("Open Calculator")
-    Main->>UI: emit_ui_log("MIC", "Open Calculator")
-    Main->>Brain: Enqueue prompt in agent_task_queue
-    Main->>UI: emit_ui_status("THINKING...", #00e5ff)
-
-    Brain->>LLM: Classify Intent (JSON schema)
-    LLM-->>Brain: {"intent": "automation", "tool_name": "launch_application", "args": {"app_identifier": "calc"}}
-    Brain->>Brain: Execute LocalTools.launch_application("calc")
-    Note over Brain: Windows Calculator Launches
-    Brain->>LLM: Synthesize voice-ready response
-    LLM-->>Brain: "I have launched the Calculator for you, sir."
-
-    Brain->>Main: Returns final_response
-    Main->>UI: emit_ui_log("JARVIS", "I have launched the Calculator...")
-    Main->>UI: emit_ui_status("VOCALIZING", #00ff88)
-    Main->>TTS: audio.speak("I have launched the Calculator...")
-    TTS->>User: Audio Playback (24kHz Kokoro speech)
-    Main->>UI: emit_ui_status("ONLINE : IDLE", #00ff88)
-```
-
-### 4.2. Autonomous Self-Correction Workflow
-
-```mermaid
-flowchart TD
-    Start([User Request Ingested]) --> Router[Node: intent_router]
-    Router -->|"intent: automation"| ToolExec[Node: tool_executor]
-    
-    ToolExec --> ExecuteTool{Execute LocalTool}
-    ExecuteTool -->|Success| RespGen[Node: response_generator]
-    ExecuteTool -->|Exception / Error Code| ErrCheck{Retry Count < 2?}
-
-    ErrCheck -->|Yes| Recovery[Node: error_recovery]
-    ErrCheck -->|No (Exhausted)| FatalErr[Node: response_generator\nReport Fatal Error]
-
-    subgraph Self_Healing_Loop ["Autonomous Self-Correction Sub-Graph"]
-        Recovery --> AnalyzePrompt[Prompt Llama 3.1 8B with:\n- Failed Tool Name\n- Input Arguments\n- Python Stack Trace / OS Error]
-        AnalyzePrompt --> LLMDiagnosis{LLM Diagnosis}
-        LLMDiagnosis -->|"action: retry (Corrected Args)"| ToolExec
-        LLMDiagnosis -->|"action: abort (Unrecoverable)"| FatalErr
-    end
-
-    RespGen --> FinalResponse([Vocalize & Display Response])
-    FatalErr --> FinalResponse
-```
+## 12. Caching with Redis & High-Performance Fallback
+* **Multi-Tier Caching**: Connects to Redis via `REDIS_URL` or degrades gracefully to an in-memory thread-safe dictionary with exact TTL expiration.
+* **Use Cases**: Caches hardware telemetry ($5\text{s}$ TTL) and repeated agent query responses ($120\text{s}$ TTL).
+* **Metrics**: Tracks cache hits, misses, hit ratio percentage, and active key count.
 
 ---
 
-## 5. Inter-Process & Inter-Thread Synchronization
-
-The application relies on decoupled queue architectures to avoid race conditions and UI lockups:
-
-1. **`ui_queue` (`queue.Queue`)**:
-   - Dispatches tuples `("log", (tag, message))` and `("status", (status_text, color_hex))`.
-   - Read exclusively by the UI thread via `JarvisUIPanel._process_queue()` scheduled via Tkinter `after()` callbacks.
-2. **`agent_task_queue` (`queue.Queue`)**:
-   - Buffers incoming user queries from voice transcription or GUI text submissions.
-   - Read exclusively by `JarvisAgentWorker` thread with a 500ms polling timeout.
-3. **`speech_queue` (`queue.Queue`)**:
-   - Buffers plain text sentences waiting for neural vocal synthesis.
-   - Read exclusively by `JarvisTTSWorker` to guarantee uninterrupted audio streaming.
+## 13. WebSocket / Real-Time Communication
+* **Endpoint**: `/ws/telemetry`.
+* **Operation**: Upon connection handshake, enters an asynchronous loop transmitting JSON telemetry packets (CPU load, RAM allocation, battery status, cache metrics) at $1\text{Hz}$ with disconnect cleanup.
 
 ---
 
-## 6. Safety Guardrails & Failure Modes
+## 14. Scheduled Jobs / Cron
+* **Async Cron Loop**: Background task initialized at server startup (`@app.on_event("startup")`).
+* **Maintenance Schedule**: Executes every 10 minutes to run memory vector index consolidation, purge expired cache records, and update telemetry snapshots.
 
-* **Destructive Shell Command Guard**: PowerShell commands are filtered against a blacklist containing `format`, `del /f /s /q c:`, `rmdir /s /q c:`, and `reg delete`.
-* **Execution Timeout Guard**: Shell operations enforce an explicit `timeout=15` seconds to prevent hung background processes.
-* **Ollama Connection Resilience**: If the Ollama daemon is unreachable or returns an HTTP error, the response generator catches the network exception and degrades gracefully with a polite user-facing error message.
-* **Microphone Mute State**: A global thread-safe flag (`is_muted`) in `RealtimeSTTListener` suppresses speech ingestion without halting audio recording hardware.
+---
+
+## 15. Server-Side Rendering (SSR) & 3rd-Party Integration
+* **Server-Side Rendering**: Endpoint `/ssr/dashboard` renders dynamic HTML directly on the server with Jinja2, demonstrating direct server HTML generation.
+* **3rd-Party API Integration**: Connects to Open-Meteo REST API with timeout guards ($3.0\text{s}$) and offline sensor fallback.
+* **Payment Gateway Integration**: Implements Stripe/Razorpay checkout session generation and HMAC-SHA256 webhook signature validation.
+
+---
+
+## 16. Containerization with Docker & Backend Deployment
+* **Dockerfile**: Multi-stage Linux container with build dependencies, PortAudio, FFmpeg, and Python 3.12.
+* **Docker Compose**: Orchestrates `jarvis-backend` and `redis` services with volume persistence and healthcheck polling.
+* **Deployment Automation**: `deploy.sh` script validating environments, executing migrations, running tests, and launching production Uvicorn workers.
